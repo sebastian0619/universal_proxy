@@ -15,10 +15,12 @@ app.use(express.urlencoded({ extended: true }));
 
 app.all('*', async (req, res) => {
   try {
-    const url = new URL(req.originalUrl, TELEGRAPH_URL);
-    const headers = req.headers;
+    const url = new URL(req.url, TELEGRAPH_URL);
+    const headers = Object.fromEntries(
+      Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host')
+    );
 
-    const modifiedRequest = new fetch.Request(url.toString(), {
+    const modifiedRequest = new fetch(url.toString(), {
       headers: headers,
       method: req.method,
       body: ['GET', 'HEAD'].includes(req.method) ? null : req.body,
@@ -26,8 +28,8 @@ app.all('*', async (req, res) => {
       agent: url.protocol === 'https:' ? httpsAgent : null
     });
 
-    const response = await fetch(modifiedRequest);
-    const responseBody = await response.text();
+    const response = await modifiedRequest;
+    const responseBody = await response.buffer();
     const modifiedHeaders = {};
 
     response.headers.forEach((value, key) => {
