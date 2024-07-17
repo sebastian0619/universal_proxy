@@ -4,6 +4,6 @@ services:
   proxy:
     build: .
     ports:
-      - "3005:3000"
+      - "3000:3000"
     environment:
       - TELEGRAPH_URL=https://image.tmdb.org
