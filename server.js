@@ -1,56 +1,61 @@
 const express = require('express');
-const axios = require('axios');
+const fetch = require('node-fetch');
 const https = require('https');
 
 const app = express();
+const TELEGRAPH_URL = process.env.TELEGRAPH_URL || 'https://api.tmdb.org';
 
-const TARGET_URL = process.env.TARGET_URL || 'https://api.tmdb.org';
+// 创建一个忽略证书验证的https.Agent实例
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
 
-app.use(async (req, res) => {
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.all('*', async (req, res) => {
   try {
-    // 从请求URL中获取 API查询参数
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const searchParams = url.searchParams;
+    const url = new URL(req.url, TELEGRAPH_URL);
+    url.host = TELEGRAPH_URL.replace(/^https?:\/\//, '');
 
-    // 设置代理API请求的URL地址
-    const apiUrl = `${TARGET_URL}${url.pathname}?${searchParams.toString()}`;
+    console.log(`Proxying request to: ${url.toString()}`); // Log the proxied URL
 
-    console.log(`Proxying request to: ${apiUrl}`); // Log the proxied URL
+    const headers = Object.fromEntries(
+      Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host')
+    );
 
-    // 设置API请求的headers
-    const headers = {};
-    for (let [key, value] of Object.entries(req.headers)) {
-      headers[key] = value;
-    }
-    headers['Host'] = new URL(TARGET_URL).host;
+    console.log('Request headers:', headers); // Log the request headers
 
-    // 创建一个忽略 SSL 错误的 agent
-    const agent = new https.Agent({ rejectUnauthorized: false });
-
-    // 创建API请求
-    const response = await axios({
-      url: apiUrl,
-      method: req.method,
+    const modifiedRequest = new fetch(url.toString(), {
       headers: headers,
-      responseType: 'stream', // 确保响应以流的方式处理
-      httpsAgent: agent
+      method: req.method,
+      body: ['GET', 'HEAD'].includes(req.method) ? null : req.body,
+      redirect: 'follow',
+      agent: url.protocol === 'https:' ? httpsAgent : null
     });
 
-    // 设置响应的状态码和headers
-    res.status(response.status);
-    for (let [key, value] of Object.entries(response.headers)) {
-      res.set(key, value);
-    }
+    const response = await modifiedRequest;
 
-    // 返回API响应的内容
-    response.data.pipe(res);
+    console.log('Response status:', response.status); // Log the response status
+    console.log('Response headers:', response.headers.raw()); // Log the response headers
+
+    const responseBody = await response.buffer();
+    const modifiedHeaders = {};
+
+    response.headers.forEach((value, key) => {
+      modifiedHeaders[key] = value;
+    });
+
+    // 添加允许跨域访问的响应头
+    modifiedHeaders['Access-Control-Allow-Origin'] = '*';
+
+    res.status(response.status).set(modifiedHeaders).send(responseBody);
   } catch (error) {
     console.error('Fetch error:', error.message); // Log the error message
-    res.status(500).send('Internal Server Error');
+    res.status(500).send(error.toString());
   }
 });
 
-// 启动服务器
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Proxy server is running on port ${port}`);

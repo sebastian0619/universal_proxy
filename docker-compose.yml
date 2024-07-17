@@ -6,4 +6,4 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - TARGET_URL=https://image.tmdb.org
+      - TELEGRAPH_URL=https://image.tmdb.org
