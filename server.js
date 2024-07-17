@@ -16,6 +16,8 @@ app.use(express.urlencoded({ extended: true }));
 app.all('*', async (req, res) => {
   try {
     const url = new URL(req.url, TELEGRAPH_URL);
+    url.host = TELEGRAPH_URL.replace(/^https?:\/\//, '');
+
     const headers = Object.fromEntries(
       Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host')
     );
