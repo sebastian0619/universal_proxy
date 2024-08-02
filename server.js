@@ -38,16 +38,12 @@ app.all('*', async (req, res) => {
     console.log('Response status:', response.status);
     console.log('Response headers:', response.headers.raw());
 
-    const responseBody = await response.buffer();
-    const modifiedHeaders = {};
-
-    response.headers.forEach((value, key) => {
-      modifiedHeaders[key] = value;
+    res.writeHead(response.status, {
+      ...Object.fromEntries(response.headers),
+      'Access-Control-Allow-Origin': '*',
     });
 
-    modifiedHeaders['Access-Control-Allow-Origin'] = '*';
-
-    res.status(response.status).set(modifiedHeaders).send(responseBody);
+    response.body.pipe(res);
   } catch (error) {
     console.error('Fetch error:', error.message);
     res.status(500).send(error.toString());
