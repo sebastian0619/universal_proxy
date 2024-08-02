@@ -3,9 +3,8 @@ const fetch = require('node-fetch');
 const https = require('https');
 
 const app = express();
-const TELEGRAPH_URL = process.env.TELEGRAPH_URL || 'https://api.tmdb.org';
+const TELEGRAPH_URL = process.env.TELEGRAPH_URL || 'https://image.tmdb.org';
 
-// 创建一个忽略证书验证的https.Agent实例
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
@@ -18,26 +17,26 @@ app.all('*', async (req, res) => {
     const url = new URL(req.url, TELEGRAPH_URL);
     url.host = TELEGRAPH_URL.replace(/^https?:\/\//, '');
 
-    console.log(`Proxying request to: ${url.toString()}`); // Log the proxied URL
+    console.log(`Proxying request to: ${url.toString()}`);
 
     const headers = Object.fromEntries(
-      Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host')
+      Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host' && key.toLowerCase() !== 'accept-encoding')
     );
 
-    console.log('Request headers:', headers); // Log the request headers
+    console.log('Request headers:', headers);
 
-    const modifiedRequest = new fetch(url.toString(), {
+    const fetchOptions = {
       headers: headers,
       method: req.method,
-      body: ['GET', 'HEAD'].includes(req.method) ? null : req.body,
+      body: ['GET', 'HEAD'].includes(req.method) ? null : JSON.stringify(req.body),
       redirect: 'follow',
       agent: url.protocol === 'https:' ? httpsAgent : null
-    });
+    };
 
-    const response = await modifiedRequest;
+    const response = await fetch(url.toString(), fetchOptions);
 
-    console.log('Response status:', response.status); // Log the response status
-    console.log('Response headers:', response.headers.raw()); // Log the response headers
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers.raw());
 
     const responseBody = await response.buffer();
     const modifiedHeaders = {};
@@ -46,12 +45,11 @@ app.all('*', async (req, res) => {
       modifiedHeaders[key] = value;
     });
 
-    // 添加允许跨域访问的响应头
     modifiedHeaders['Access-Control-Allow-Origin'] = '*';
 
     res.status(response.status).set(modifiedHeaders).send(responseBody);
   } catch (error) {
-    console.error('Fetch error:', error.message); // Log the error message
+    console.error('Fetch error:', error.message);
     res.status(500).send(error.toString());
   }
 });
