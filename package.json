@@ -1,13 +1,18 @@
 {
-  "name": "proxyserver",
+  "name": "proxy-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "A simple proxy server for image.tmdb.org",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.17.1",
-    "node-fetch": "^2.6.1"
-  }
+    "axios": "^0.21.1",
+    "express": "^4.17.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "",
+  "license": "ISC"
 }

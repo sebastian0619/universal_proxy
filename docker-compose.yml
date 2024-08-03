@@ -3,6 +3,7 @@ version: '3'
 services:
   proxy:
     build: .
+    container_name: tmdb_image_proxy
     ports:
       - "3000:3000"
     environment:

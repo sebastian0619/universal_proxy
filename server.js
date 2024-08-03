@@ -1,56 +1,74 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const axios = require('axios');
 const https = require('https');
+const cluster = require('cluster');
+const os = require('os');
 
-const app = express();
+const numCPUs = os.cpus().length;
 const TELEGRAPH_URL = process.env.TELEGRAPH_URL || 'https://image.tmdb.org';
 
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
-});
+if (cluster.isMaster) {
+  console.log(`Master ${process.pid} is running`);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.all('*', async (req, res) => {
-  try {
-    const url = new URL(req.url, TELEGRAPH_URL);
-    url.host = TELEGRAPH_URL.replace(/^https?:\/\//, '');
-
-    console.log(`Proxying request to: ${url.toString()}`);
-
-    const headers = Object.fromEntries(
-      Object.entries(req.headers).filter(([key]) => key.toLowerCase() !== 'host' && key.toLowerCase() !== 'accept-encoding')
-    );
-
-    console.log('Request headers:', headers);
-
-    const fetchOptions = {
-      headers: headers,
-      method: req.method,
-      body: ['GET', 'HEAD'].includes(req.method) ? null : JSON.stringify(req.body),
-      redirect: 'follow',
-      agent: url.protocol === 'https:' ? httpsAgent : null
-    };
-
-    const response = await fetch(url.toString(), fetchOptions);
-
-    console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers.raw());
-
-    res.writeHead(response.status, {
-      ...Object.fromEntries(response.headers),
-      'Access-Control-Allow-Origin': '*',
-    });
-
-    response.body.pipe(res);
-  } catch (error) {
-    console.error('Fetch error:', error.message);
-    res.status(500).send(error.toString());
+  // Fork workers.
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
   }
-});
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Proxy server is running on port ${port}`);
-});
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`Worker ${worker.process.pid} died`);
+    cluster.fork(); // Restart the worker
+  });
+} else {
+  const app = express();
+
+  app.use(async (req, res) => {
+    try {
+      // 从请求URL中获取 API查询参数
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const searchParams = url.searchParams;
+
+      // 设置代理API请求的URL地址
+      const apiUrl = `${TELEGRAPH_URL}${url.pathname}?${searchParams.toString()}`;
+
+      console.log(`Proxying request to: ${apiUrl}`); // Log the proxied URL
+
+      // 设置API请求的headers
+      const headers = {};
+      for (let [key, value] of Object.entries(req.headers)) {
+        headers[key] = value;
+      }
+      headers['Host'] = new URL(TELEGRAPH_URL).host;
+
+      // 创建一个忽略 SSL 错误的 agent
+      const agent = new https.Agent({ rejectUnauthorized: false });
+
+      // 创建API请求
+      const response = await axios({
+        url: apiUrl,
+        method: req.method,
+        headers: headers,
+        responseType: 'stream', // 关键在于使用 stream 处理图像数据
+        httpsAgent: agent
+      });
+
+      // 设置响应的状态码和headers
+      res.status(response.status);
+      for (let [key, value] of Object.entries(response.headers)) {
+        res.set(key, value);
+      }
+
+      // 返回API响应的内容
+      response.data.pipe(res);
+    } catch (error) {
+      console.error('Fetch error:', error.message); // Log the error message
+      res.status(500).send('Internal Server Error');
+    }
+  });
+
+  // 启动服务器
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Worker ${process.pid} is running on port ${port}`);
+  });
+}
